@@ -16,7 +16,7 @@ Use this resource to create an alert contact
 resource `uptimerobot_alert_contact` `slack` {
   friendly_name = `Slack Alert`
   type          = `slack`
-  webhook_url   = `https://hooks.slack.com/services/XXXXXXX`
+  value   = `https://hooks.slack.com/services/XXXXXXX`
 }
 ```
 
@@ -36,6 +36,8 @@ resource `uptimerobot_alert_contact` `slack` {
   - `pushover`
   - `hipchat`
   - `slack`
+  - `telegram`
+  - `hangouts`
 * `value` - alert contact's address/phone/url
 
 ## Attributes Reference

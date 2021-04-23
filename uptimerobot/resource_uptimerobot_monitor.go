@@ -2,10 +2,11 @@ package uptimerobot
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
-	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	uptimerobotapi "github.com/louy/terraform-provider-uptimerobot/uptimerobot/api"
 )
 
@@ -70,9 +71,19 @@ func resourceMonitor() *schema.Resource {
 				Optional:  true,
 				Sensitive: true,
 			},
+			"http_auth_type": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringInSlice(uptimerobotapi.MonitorHTTPAuthType, false),
+			},
 			"status": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+			"ignore_ssl_errors": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
 			},
 			"alert_contact": {
 				Type:     schema.TypeList,
@@ -100,7 +111,6 @@ func resourceMonitor() *schema.Resource {
 				Optional: true,
 			},
 			// TODO - mwindows
-			// TODO - ignore_ssl_errors
 		},
 	}
 }
@@ -123,15 +133,19 @@ func resourceMonitorCreate(d *schema.ResourceData, m interface{}) error {
 
 		req.HTTPUsername = d.Get("http_username").(string)
 		req.HTTPPassword = d.Get("http_password").(string)
+		req.HTTPAuthType = d.Get("http_auth_type").(string)
 		break
 	case "http":
 		req.HTTPUsername = d.Get("http_username").(string)
 		req.HTTPPassword = d.Get("http_password").(string)
+		req.HTTPAuthType = d.Get("http_auth_type").(string)
 		break
 	}
 
 	// Add optional attributes
 	req.Interval = d.Get("interval").(int)
+
+	req.IgnoreSSLErrors = d.Get("ignore_ssl_errors").(bool)
 
 	req.AlertContacts = make([]uptimerobotapi.MonitorRequestAlertContact, len(d.Get("alert_contact").([]interface{})))
 	for k, v := range d.Get("alert_contact").([]interface{}) {
@@ -154,7 +168,9 @@ func resourceMonitorCreate(d *schema.ResourceData, m interface{}) error {
 		return err
 	}
 	d.SetId(fmt.Sprintf("%d", monitor.ID))
-	updateMonitorResource(d, monitor)
+	if err := updateMonitorResource(d, monitor); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -168,9 +184,9 @@ func resourceMonitorRead(d *schema.ResourceData, m interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	updateMonitorResource(d, monitor)
-
+	if err := updateMonitorResource(d, monitor); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -198,22 +214,30 @@ func resourceMonitorUpdate(d *schema.ResourceData, m interface{}) error {
 
 		req.HTTPUsername = d.Get("http_username").(string)
 		req.HTTPPassword = d.Get("http_password").(string)
+		req.HTTPAuthType = d.Get("http_auth_type").(string)
 		break
 	case "http":
 		req.HTTPUsername = d.Get("http_username").(string)
 		req.HTTPPassword = d.Get("http_password").(string)
+		req.HTTPAuthType = d.Get("http_auth_type").(string)
 		break
 	}
 
 	// Add optional attributes
 	req.Interval = d.Get("interval").(int)
+	req.IgnoreSSLErrors = d.Get("ignore_ssl_errors").(bool)
 
 	req.AlertContacts = make([]uptimerobotapi.MonitorRequestAlertContact, len(d.Get("alert_contact").([]interface{})))
 	for k, v := range d.Get("alert_contact").([]interface{}) {
 		req.AlertContacts[k] = uptimerobotapi.MonitorRequestAlertContact{
-			ID: v.(map[string]interface{})["id"].(string),
+			ID:         v.(map[string]interface{})["id"].(string),
+			Threshold:  v.(map[string]interface{})["threshold"].(int),
+			Recurrence: v.(map[string]interface{})["recurrence"].(int),
 		}
 	}
+	sort.Slice(req.AlertContacts, func(i, j int) bool {
+		return req.AlertContacts[i].ID < req.AlertContacts[j].ID
+	})
 
 	// custom_http_headers
 	httpHeaderMap := d.Get("custom_http_headers").(map[string]interface{})
@@ -226,8 +250,9 @@ func resourceMonitorUpdate(d *schema.ResourceData, m interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	updateMonitorResource(d, monitor)
+	if err := updateMonitorResource(d, monitor); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -244,7 +269,7 @@ func resourceMonitorDelete(d *schema.ResourceData, m interface{}) error {
 	return nil
 }
 
-func updateMonitorResource(d *schema.ResourceData, m uptimerobotapi.Monitor) {
+func updateMonitorResource(d *schema.ResourceData, m uptimerobotapi.Monitor) error {
 	d.Set("friendly_name", m.FriendlyName)
 	d.Set("url", m.URL)
 	d.Set("type", m.Type)
@@ -259,6 +284,26 @@ func updateMonitorResource(d *schema.ResourceData, m uptimerobotapi.Monitor) {
 
 	d.Set("http_username", m.HTTPUsername)
 	d.Set("http_password", m.HTTPPassword)
+	// PS: There seems to be a bug in the UR api as it never returns this value
+	// d.Set("http_auth_type", m.HTTPAuthType)
 
-	d.Set("custom_http_headers", m.CustomHTTPHeaders)
+	d.Set("ignore_ssl_errors", m.IgnoreSSLErrors)
+
+	if err := d.Set("custom_http_headers", m.CustomHTTPHeaders); err != nil {
+		return fmt.Errorf("error setting custom_http_headers for resource %s: %s", d.Id(), err)
+	}
+
+	rawContacts := make([]map[string]interface{}, len(m.AlertContacts))
+	for k, v := range m.AlertContacts {
+		rawContacts[k] = map[string]interface{}{
+			"id":         v.ID,
+			"recurrence": v.Recurrence,
+			"threshold":  v.Threshold,
+		}
+	}
+	if err := d.Set("alert_contact", rawContacts); err != nil {
+		return fmt.Errorf("error setting alert_contact for resource %s: %s", d.Id(), err)
+	}
+
+	return nil
 }

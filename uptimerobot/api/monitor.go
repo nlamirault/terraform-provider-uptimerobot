@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 )
 
@@ -41,6 +42,18 @@ var monitorKeywordType = map[string]int{
 }
 var MonitorKeywordType = mapKeys(monitorKeywordType)
 
+var monitorHTTPAuthType = map[string]int{
+	"basic":  1,
+	"digest": 2,
+}
+var MonitorHTTPAuthType = mapKeys(monitorHTTPAuthType)
+
+type MonitorAlertContact struct {
+	ID         string `json:"id"`
+	Recurrence int    `json:"recurrence"`
+	Threshold  int    `json:"threshold"`
+}
+
 type Monitor struct {
 	ID           int    `json:"id"`
 	FriendlyName string `json:"friendly_name"`
@@ -57,15 +70,21 @@ type Monitor struct {
 
 	HTTPUsername string `json:"http_username"`
 	HTTPPassword string `json:"http_password"`
+	HTTPAuthType string `json:"http_auth_type"`
+
+	IgnoreSSLErrors bool `json:"ignore_ssl_errors"`
 
 	CustomHTTPHeaders map[string]string
+
+	AlertContacts []MonitorAlertContact
 }
 
 func (client UptimeRobotApiClient) GetMonitor(id int) (m Monitor, err error) {
 	data := url.Values{}
 	data.Add("monitors", fmt.Sprintf("%d", id))
-	// get custom http header
+	data.Add("ssl", fmt.Sprintf("%d", 1))
 	data.Add("custom_http_headers", fmt.Sprintf("%d", 1))
+	data.Add("alert_contacts", fmt.Sprintf("%d", 1))
 
 	body, err := client.MakeCall(
 		"getMonitors",
@@ -110,13 +129,28 @@ func (client UptimeRobotApiClient) GetMonitor(id int) (m Monitor, err error) {
 		m.KeywordType = intToString(monitorKeywordType, int(monitor["keyword_type"].(float64)))
 		m.KeywordValue = monitor["keyword_value"].(string)
 
+		if val := monitor["http_auth_type"]; val != nil {
+			// PS: There seems to be a bug in the UR api as it never returns this value
+			m.HTTPAuthType = intToString(monitorHTTPAuthType, int(val.(float64)))
+		}
 		m.HTTPUsername = monitor["http_username"].(string)
 		m.HTTPPassword = monitor["http_password"].(string)
 		break
 	case "http":
+		if val := monitor["http_auth_type"]; val != nil {
+			// PS: There seems to be a bug in the UR api as it never returns this value
+			m.HTTPAuthType = intToString(monitorHTTPAuthType, int(val.(float64)))
+		}
 		m.HTTPUsername = monitor["http_username"].(string)
 		m.HTTPPassword = monitor["http_password"].(string)
 		break
+	}
+
+	ignoreSSLErrors := int(monitor["ssl"].(map[string]interface{})["ignore_errors"].(float64))
+	if ignoreSSLErrors == 1 {
+		m.IgnoreSSLErrors = true
+	} else {
+		m.IgnoreSSLErrors = false
 	}
 
 	customHTTPHeaders := make(map[string]string)
@@ -124,6 +158,21 @@ func (client UptimeRobotApiClient) GetMonitor(id int) (m Monitor, err error) {
 		customHTTPHeaders[k] = v.(string)
 	}
 	m.CustomHTTPHeaders = customHTTPHeaders
+
+	if contacts := monitor["alert_contacts"].([]interface{}); contacts != nil {
+		m.AlertContacts = make([]MonitorAlertContact, len(contacts))
+		for k, v := range contacts {
+			contact := v.(map[string]interface{})
+			var ac MonitorAlertContact
+			ac.ID = contact["id"].(string)
+			ac.Recurrence = int(contact["recurrence"].(float64))
+			ac.Threshold = int(contact["threshold"].(float64))
+			m.AlertContacts[k] = ac
+		}
+		sort.Slice(m.AlertContacts, func(i, j int) bool {
+			return m.AlertContacts[i].ID < m.AlertContacts[j].ID
+		})
+	}
 
 	return
 }
@@ -147,6 +196,9 @@ type MonitorCreateRequest struct {
 
 	HTTPUsername string
 	HTTPPassword string
+	HTTPAuthType string
+
+	IgnoreSSLErrors bool
 
 	AlertContacts []MonitorRequestAlertContact
 
@@ -168,14 +220,23 @@ func (client UptimeRobotApiClient) CreateMonitor(req MonitorCreateRequest) (m Mo
 		data.Add("keyword_type", fmt.Sprintf("%d", monitorKeywordType[req.KeywordType]))
 		data.Add("keyword_value", req.KeywordValue)
 
+		data.Add("http_auth_type", fmt.Sprintf("%d", monitorHTTPAuthType[req.HTTPAuthType]))
 		data.Add("http_username", req.HTTPUsername)
 		data.Add("http_password", req.HTTPPassword)
 		break
 	case "http":
+		data.Add("http_auth_type", fmt.Sprintf("%d", monitorHTTPAuthType[req.HTTPAuthType]))
 		data.Add("http_username", req.HTTPUsername)
 		data.Add("http_password", req.HTTPPassword)
 		break
 	}
+
+	if req.IgnoreSSLErrors {
+		data.Add("ignore_ssl_errors", "1")
+	} else {
+		data.Add("ignore_ssl_errors", "0")
+	}
+
 	acStrings := make([]string, len(req.AlertContacts))
 	for k, v := range req.AlertContacts {
 		acStrings[k] = fmt.Sprintf("%s_%d_%d", v.ID, v.Threshold, v.Recurrence)
@@ -219,6 +280,9 @@ type MonitorUpdateRequest struct {
 
 	HTTPUsername string
 	HTTPPassword string
+	HTTPAuthType string
+
+	IgnoreSSLErrors bool
 
 	AlertContacts []MonitorRequestAlertContact
 
@@ -241,14 +305,23 @@ func (client UptimeRobotApiClient) UpdateMonitor(req MonitorUpdateRequest) (m Mo
 		data.Add("keyword_type", fmt.Sprintf("%d", monitorKeywordType[req.KeywordType]))
 		data.Add("keyword_value", req.KeywordValue)
 
+		data.Add("http_auth_type", fmt.Sprintf("%d", monitorHTTPAuthType[req.HTTPAuthType]))
 		data.Add("http_username", req.HTTPUsername)
 		data.Add("http_password", req.HTTPPassword)
 		break
 	case "http":
+		data.Add("http_auth_type", fmt.Sprintf("%d", monitorHTTPAuthType[req.HTTPAuthType]))
 		data.Add("http_username", req.HTTPUsername)
 		data.Add("http_password", req.HTTPPassword)
 		break
 	}
+
+	if req.IgnoreSSLErrors {
+		data.Add("ignore_ssl_errors", "1")
+	} else {
+		data.Add("ignore_ssl_errors", "0")
+	}
+
 	acStrings := make([]string, len(req.AlertContacts))
 	for k, v := range req.AlertContacts {
 		acStrings[k] = fmt.Sprintf("%s_%d_%d", v.ID, v.Threshold, v.Recurrence)

@@ -1,3 +1,26 @@
+# v0.5.1
+- release: Removed the tar.gz release format to fix issue with tf registry
+
+# v0.5.0
+- resource monitor: support for importing `alert_contact` field ([#77](https://github.com/louy/terraform-provider-uptimerobot/pull/77) by [@louy](https://github.com/louy))
+- resource monitor: support for `http_auth_type` ([#75](https://github.com/louy/terraform-provider-uptimerobot/pull/75) by [@jasonrogena](https://github.com/jasonrogena))
+
+# v0.4.3
+- resource monitor: fix update suppport for `recurrence` and `threshold` in `alert_contact` ([#67](https://github.com/louy/terraform-provider-uptimerobot/pull/67) by [@drubin](https://github.com/drubin))
+
+# v0.4.2
+- Fix bug in pushover alert contact type ([#66](https://github.com/louy/terraform-provider-uptimerobot/pull/66) by [@randrusiak](https://github.com/randrusiak))
+
+# v0.4.1
+- Switch to [terraform plugin sdk](https://www.terraform.io/docs/extend/plugin-sdk.html) ([#60](https://github.com/louy/terraform-provider-uptimerobot/pull/60) by [@nlamirault](https://github.com/nlamirault))
+
+# v0.4.0
+- BREAKING: Terraform 0.12 support ([#58](https://github.com/louy/terraform-provider-uptimerobot/pull/58) by [@caarlos0](https://github.com/caarlos0), [#59](https://github.com/louy/terraform-provider-uptimerobot/pull/59) by [@aequitas](https://github.com/aequitas))
+
+# v0.3.2
+- data source alert_contact: Allow default alert contact to be configured ([#21](https://github.com/louy/terraform-provider-uptimerobot/pull/21) by [@aequitas](https://github.com/aequitas))
+- resource monitor: Handle nil value in alert contact ([#28](https://github.com/louy/terraform-provider-uptimerobot/pull/28) by [@louy](https://github.com/louy))
+
 # v0.3.1
 - resource monitor: add support for `custom_http_headers` ([#20](https://github.com/louy/terraform-provider-uptimerobot/pull/20) by [@leeif](https://github.com/leeif))
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
-	"github.com/louy/terraform-provider-uptimerobot/uptimerobot/api"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	uptimerobotapi "github.com/louy/terraform-provider-uptimerobot/uptimerobot/api"
 )
 
 func TestUptimeRobotDataResourceMonitor_http_monitor(t *testing.T) {
@@ -211,6 +211,39 @@ func TestUptimeRobotDataResourceMonitor_custom_port_monitor(t *testing.T) {
 	})
 }
 
+func TestUptimeRobotDataResourceMonitor_custom_ignore_ssl_errors(t *testing.T) {
+	var FriendlyName = "TF Test:  custom ignore ssl errors"
+	var Type = "http"
+	var URL = "https://google.com"
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			resource.TestStep{
+				Config: fmt.Sprintf(`
+				resource "uptimerobot_monitor" "test" {
+					friendly_name     = "%s"
+					type              = "%s"
+					url               = "%s"
+					ignore_ssl_errors = true
+				}
+				`, FriendlyName, Type, URL),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", FriendlyName),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", Type),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", URL),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "ignore_ssl_errors", "true"),
+				),
+			},
+			resource.TestStep{
+				ResourceName:      "uptimerobot_monitor.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
 func TestUptimeRobotDataResourceMonitor_custom_alert_contact_threshold_and_recurrence(t *testing.T) {
 	var FriendlyName = "TF Test: custom alert contact threshold & recurrence"
 	var Type = "http"
@@ -232,7 +265,7 @@ func TestUptimeRobotDataResourceMonitor_custom_alert_contact_threshold_and_recur
 					type          = "%s"
 					url           = "%s"
 					alert_contact {
-						id         = "${uptimerobot_alert_contact.test.id}"
+						id         = uptimerobot_alert_contact.test.id
 						threshold  = 0
 						recurrence = 0
 					}
@@ -249,10 +282,9 @@ func TestUptimeRobotDataResourceMonitor_custom_alert_contact_threshold_and_recur
 				),
 			},
 			resource.TestStep{
-				ResourceName: "uptimerobot_monitor.test",
-				ImportState:  true,
-				// uptimerobot doesn't support pulling alert_contact
-				// ImportStateVerify: true,
+				ResourceName:      "uptimerobot_monitor.test",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -273,7 +305,7 @@ func TestUptimeRobotDataResourceMonitor_custom_http_headers(t *testing.T) {
 					friendly_name = "%s"
 					type          = "%s"
 					url           = "%s"
-					custom_http_headers {
+					custom_http_headers = {
 						// Accept-Language = "en"
 					}
 				}
@@ -388,6 +420,8 @@ func TestUptimeRobotDataResourceMonitor_http_auth_monitor(t *testing.T) {
 	var Type = "http"
 	var Username = "tester"
 	var Password = "secret"
+	var AuthType = "basic"
+	var AuthType2 = "digest"
 	var URL = fmt.Sprintf("https://httpbin.org/basic-auth/%s/%s", Username, Password)
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -397,25 +431,54 @@ func TestUptimeRobotDataResourceMonitor_http_auth_monitor(t *testing.T) {
 			resource.TestStep{
 				Config: fmt.Sprintf(`
 				resource "uptimerobot_monitor" "test" {
-					friendly_name = "%s"
-					type          = "%s"
-					url           = "%s"
-					http_username = "%s"
-					http_password = "%s"
+					friendly_name  = "%s"
+					type           = "%s"
+					url            = "%s"
+					http_username  = "%s"
+					http_password  = "%s"
+					http_auth_type = "%s"
 				}
-				`, FriendlyName, Type, URL, Username, Password),
+				`, FriendlyName, Type, URL, Username, Password, AuthType),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", FriendlyName),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", Type),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", URL),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_username", Username),
 					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_password", Password),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_auth_type", AuthType),
 				),
 			},
 			resource.TestStep{
-				ResourceName:      "uptimerobot_monitor.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName: "uptimerobot_monitor.test",
+				ImportState:  true,
+				// NB: Disabled due to http_auth_type issue
+				// ImportStateVerify: true,
+			},
+			resource.TestStep{
+				Config: fmt.Sprintf(`
+				resource "uptimerobot_monitor" "test" {
+					friendly_name  = "%s"
+					type           = "%s"
+					url            = "%s"
+					http_username  = "%s"
+					http_password  = "%s"
+					http_auth_type = "%s"
+				}
+				`, FriendlyName, Type, URL, Username, Password, AuthType2),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", FriendlyName),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", Type),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", URL),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_username", Username),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_password", Password),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_auth_type", AuthType2),
+				),
+			},
+			resource.TestStep{
+				ResourceName: "uptimerobot_monitor.test",
+				ImportState:  true,
+				// NB: Disabled due to http_auth_type issue
+				// ImportStateVerify: true,
 			},
 		},
 	})
@@ -436,7 +499,7 @@ func TestUptimeRobotDataResourceMonitor_default_alert_contact(t *testing.T) {
 				data "uptimerobot_account" "account" {}
 
 				data "uptimerobot_alert_contact" "default" {
-				friendly_name = "${data.uptimerobot_account.account.email}"
+				friendly_name = data.uptimerobot_account.account.email
 				}
 
 				resource "uptimerobot_monitor" "test" {
@@ -444,7 +507,7 @@ func TestUptimeRobotDataResourceMonitor_default_alert_contact(t *testing.T) {
 					type          = "%s"
 					url           = "%s"
 					alert_contact {
-						id         = "${data.uptimerobot_alert_contact.default.id}"
+						id         = data.uptimerobot_alert_contact.default.id
 					}
 				}
 				`, FriendlyName, Type, URL),
@@ -457,10 +520,9 @@ func TestUptimeRobotDataResourceMonitor_default_alert_contact(t *testing.T) {
 				),
 			},
 			resource.TestStep{
-				ResourceName: "uptimerobot_monitor.test",
-				ImportState:  true,
-				// uptimerobot doesn't support pulling alert_contact
-				// ImportStateVerify: true,
+				ResourceName:      "uptimerobot_monitor.test",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
